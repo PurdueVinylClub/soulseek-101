@@ -1,0 +1,58 @@
+name: PDF
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - presentation.typ
+      - resources/**
+      - .github/workflows/pdf.yml
+  workflow_dispatch:
+
+concurrency:
+  group: pdf
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TYPST_PACKAGE_PATH: ${{ github.workspace }}/packages
+      PVC_TEMPLATE: ${{ github.workspace }}/packages/local/pvc-template/0.1.0
+    steps:
+      - name: Checkout slides
+        uses: actions/checkout@v7
+
+      - name: Checkout template as local package
+        uses: actions/checkout@v7
+        with:
+          repository: PurdueVinylClub/pvc-typst
+          path: packages/local/pvc-template/0.1.0
+
+      - uses: typst-community/setup-typst@v5
+        with:
+          typst-version: "0.15.1"
+          cache-dependency-path: presentation.typ
+
+      - name: Compile
+        run: |
+          typst compile --ignore-system-fonts --font-path "$PVC_TEMPLATE/resources/fonts" \
+            presentation.typ soulseek_101.pdf
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: soulseek_101
+          path: soulseek_101.pdf
+
+      # Rolling `latest` release: stable download URL for the newest main build.
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest soulseek_101.pdf \
+            --target "$GITHUB_SHA" \
+            --title "Soulseek 101 (${GITHUB_SHA::7})" \
+            --notes "Rendered from ${GITHUB_SHA}. Rebuilt on every slide change pushed to main."
